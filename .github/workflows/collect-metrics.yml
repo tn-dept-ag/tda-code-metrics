@@ -4,8 +4,13 @@ on:
   workflow_dispatch:
 
   schedule:
+    # Runs every Monday at 6:00 AM UTC.
+    # This is 1:00 AM Eastern Standard Time or 2:00 AM Eastern Daylight Time.
     - cron: "0 6 * * 1"
-      timezone: "America/New_York"
+
+concurrency:
+  group: code-metrics-main
+  cancel-in-progress: true
 
 permissions:
   contents: write
