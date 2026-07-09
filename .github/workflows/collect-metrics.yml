@@ -5,11 +5,10 @@ on:
 
   schedule:
     # Runs every Monday at 6:00 AM UTC.
-    # This is 1:00 AM Eastern Standard Time or 2:00 AM Eastern Daylight Time.
     - cron: "0 6 * * 1"
 
 concurrency:
-  group: code-metrics-main
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -21,7 +20,10 @@ jobs:
 
     steps:
       - name: Check out metrics repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Install cloc
         run: |
@@ -29,35 +31,60 @@ jobs:
           sudo apt-get install -y cloc
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
-      - name: Collect metrics
+      - name: Sync main, collect metrics, commit, and push
         env:
           GH_TOKEN: ${{ secrets.METRICS_REPO_TOKEN }}
+        shell: bash
         run: |
-          python scripts/collect_metrics.py \
-            --repo-list config/repos.txt \
-            --workspace .cache/repos \
-            --output data \
-            --author-email colin.stiles@tn.gov \
-            --author-email colintimothystiles@gmail.com \
-            --since 2026-01-01
+          set -euxo pipefail
 
-      - name: Commit updated metrics
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          generate_metrics_commit() {
+            git fetch origin main
+            git checkout -B main origin/main
 
-          git add data/*.csv
+            rm -rf .cache/repos
 
-          if git diff --cached --quiet; then
-            echo "No metrics changes to commit"
+            python scripts/collect_metrics.py \
+              --repo-list config/repos.txt \
+              --workspace .cache/repos \
+              --output data \
+              --author-email colin.stiles@tn.gov \
+              --author-email colintimothystiles@gmail.com \
+              --since 2026-01-01
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            git add data/*.csv
+
+            if git diff --cached --quiet; then
+              echo "No metrics changes to commit"
+              return 1
+            fi
+
+            git commit -m "Update code metrics"
+            return 0
+          }
+
+          if ! generate_metrics_commit; then
             exit 0
           fi
 
-          git commit -m "Update code metrics"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
 
-          git pull --rebase origin main
-          git push origin main
+            echo "Push failed on attempt ${attempt}; regenerating from latest origin/main"
+            sleep 5
+
+            if ! generate_metrics_commit; then
+              exit 0
+            fi
+          done
+
+          git push origin HEAD:main
