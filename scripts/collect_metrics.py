@@ -5,6 +5,8 @@ Collect code metrics across GitHub repositories.
 Outputs:
 - data/current_loc_by_language.csv
 - data/commit_activity_by_day.csv
+- data/run_summary_history.csv
+- data/repo_summary_history.csv
 
 Requirements:
 - git
@@ -18,12 +20,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import shutil
 import subprocess
 from collections import defaultdict
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterable
 
 
 EXCLUDE_DIRS = [
@@ -46,7 +48,7 @@ def run_command(
     args: list[str],
     cwd: Path | None = None,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args,
         cwd=cwd,
@@ -63,6 +65,11 @@ def run_command(
         )
 
     return result
+
+
+def require_tool(name: str) -> None:
+    if shutil.which(name) is None:
+        raise RuntimeError(f"Required tool not found on PATH: {name}")
 
 
 def read_repo_list(path: Path) -> list[str]:
@@ -85,7 +92,6 @@ def safe_repo_dir_name(repo: str) -> str:
 
 def clone_or_update_repo(repo: str, workspace: Path) -> Path:
     workspace.mkdir(parents=True, exist_ok=True)
-
     repo_dir = workspace / safe_repo_dir_name(repo)
 
     if repo_dir.exists():
@@ -93,38 +99,25 @@ def clone_or_update_repo(repo: str, workspace: Path) -> Path:
         run_command(["git", "pull", "--ff-only"], cwd=repo_dir, check=False)
         return repo_dir
 
-    # 1) Try a plain git clone (works for public repos)
-    try:
-        run_command(["git", "clone", f"https://github.com/{repo}.git", str(repo_dir)])
-        return repo_dir
-    except RuntimeError:
-        # 2) If that fails and we have a GITHUB_TOKEN, try an authenticated clone
-        token = os.environ.get("GITHUB_TOKEN")
-        if token:
-            auth_url = f"https://x-access-token:{token}@github.com/{repo}.git"
-            run_command(["git", "clone", auth_url, str(repo_dir)])
-            return repo_dir
-
-        # 3) As a last resort, try gh repo clone (may still fail if gh is unauthenticated)
-        run_command(["gh", "repo", "clone", repo, str(repo_dir)])
-        return repo_dir
+    run_command(["gh", "repo", "clone", repo, str(repo_dir)])
+    return repo_dir
 
 
 def collect_current_loc(repo: str, repo_dir: Path, run_date: str) -> list[dict[str, str | int]]:
-    cloc_args = [
-        "cloc",
-        str(repo_dir),
-        "--json",
-        f"--exclude-dir={','.join(EXCLUDE_DIRS)}",
-    ]
+    result = run_command(
+        [
+            "cloc",
+            str(repo_dir),
+            "--json",
+            f"--exclude-dir={','.join(EXCLUDE_DIRS)}",
+        ]
+    )
 
-    result = run_command(cloc_args)
     data = json.loads(result.stdout)
-
     rows: list[dict[str, str | int]] = []
 
     for language, stats in data.items():
-        if language == "header":
+        if language in {"header", "SUM"}:
             continue
 
         rows.append(
@@ -164,7 +157,6 @@ def collect_commit_activity(
 
     result = run_command(command, cwd=repo_dir)
 
-    # Key: repo, date, author_email, author_name
     totals: dict[tuple[str, str, str, str], dict[str, int]] = defaultdict(
         lambda: {"commits": 0, "added": 0, "deleted": 0}
     )
@@ -243,6 +235,102 @@ def collect_commit_activity(
     return rows
 
 
+def summarize_current_loc_by_repo(
+    repos: Iterable[str],
+    current_loc_rows: list[dict[str, str | int]],
+) -> dict[str, dict[str, int]]:
+    summary: dict[str, dict[str, int]] = {
+        repo: {"current_files": 0, "current_code_lines": 0}
+        for repo in repos
+    }
+
+    for row in current_loc_rows:
+        repo = str(row["repo"])
+        summary.setdefault(repo, {"current_files": 0, "current_code_lines": 0})
+        summary[repo]["current_files"] += int(row["files"])
+        summary[repo]["current_code_lines"] += int(row["code"])
+
+    return summary
+
+
+def summarize_commit_activity_by_repo(
+    repos: Iterable[str],
+    commit_activity_rows: list[dict[str, str | int]],
+) -> dict[str, dict[str, int]]:
+    summary: dict[str, dict[str, int]] = {
+        repo: {"commits_since_start": 0, "added_since_start": 0, "deleted_since_start": 0, "net_since_start": 0}
+        for repo in repos
+    }
+
+    for row in commit_activity_rows:
+        repo = str(row["repo"])
+        summary.setdefault(
+            repo,
+            {"commits_since_start": 0, "added_since_start": 0, "deleted_since_start": 0, "net_since_start": 0},
+        )
+        summary[repo]["commits_since_start"] += int(row["commits"])
+        summary[repo]["added_since_start"] += int(row["added"])
+        summary[repo]["deleted_since_start"] += int(row["deleted"])
+        summary[repo]["net_since_start"] += int(row["net"])
+
+    return summary
+
+
+def build_history_rows(
+    repos: list[str],
+    current_loc_rows: list[dict[str, str | int]],
+    commit_activity_rows: list[dict[str, str | int]],
+    run_date: str,
+    run_timestamp_utc: str,
+    since: str,
+    author_emails: set[str],
+) -> tuple[list[dict[str, str | int]], list[dict[str, str | int]]]:
+    loc_by_repo = summarize_current_loc_by_repo(repos, current_loc_rows)
+    commits_by_repo = summarize_commit_activity_by_repo(repos, commit_activity_rows)
+    author_filter = ";".join(sorted(author_emails)) if author_emails else "ALL"
+
+    repo_rows: list[dict[str, str | int]] = []
+
+    for repo in repos:
+        loc = loc_by_repo.get(repo, {"current_files": 0, "current_code_lines": 0})
+        commits = commits_by_repo.get(
+            repo,
+            {"commits_since_start": 0, "added_since_start": 0, "deleted_since_start": 0, "net_since_start": 0},
+        )
+
+        repo_rows.append(
+            {
+                "run_date": run_date,
+                "run_timestamp_utc": run_timestamp_utc,
+                "since": since,
+                "author_filter": author_filter,
+                "repo": repo,
+                "current_files": loc["current_files"],
+                "current_code_lines": loc["current_code_lines"],
+                "commits_since_start": commits["commits_since_start"],
+                "added_since_start": commits["added_since_start"],
+                "deleted_since_start": commits["deleted_since_start"],
+                "net_since_start": commits["net_since_start"],
+            }
+        )
+
+    run_row = {
+        "run_date": run_date,
+        "run_timestamp_utc": run_timestamp_utc,
+        "since": since,
+        "author_filter": author_filter,
+        "total_repos": len(repos),
+        "current_files": sum(int(row["current_files"]) for row in repo_rows),
+        "current_code_lines": sum(int(row["current_code_lines"]) for row in repo_rows),
+        "commits_since_start": sum(int(row["commits_since_start"]) for row in repo_rows),
+        "added_since_start": sum(int(row["added_since_start"]) for row in repo_rows),
+        "deleted_since_start": sum(int(row["deleted_since_start"]) for row in repo_rows),
+        "net_since_start": sum(int(row["net_since_start"]) for row in repo_rows),
+    }
+
+    return [run_row], repo_rows
+
+
 def write_csv(path: Path, rows: list[dict[str, str | int]], fieldnames: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -252,9 +340,37 @@ def write_csv(path: Path, rows: list[dict[str, str | int]], fieldnames: list[str
         writer.writerows(rows)
 
 
-def require_tool(name: str) -> None:
-    if shutil.which(name) is None:
-        raise RuntimeError(f"Required tool not found on PATH: {name}")
+def append_or_replace_csv(
+    path: Path,
+    new_rows: list[dict[str, str | int]],
+    fieldnames: list[str],
+    key_fields: list[str],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_rows: list[dict[str, str]] = []
+
+    if path.exists():
+        with path.open("r", newline="", encoding="utf-8") as csvfile:
+            reader = csv.DictReader(csvfile)
+            existing_rows = [row for row in reader]
+
+    new_keys = {
+        tuple(str(row.get(field, "")) for field in key_fields)
+        for row in new_rows
+    }
+
+    kept_rows = [
+        row
+        for row in existing_rows
+        if tuple(str(row.get(field, "")) for field in key_fields) not in new_keys
+    ]
+
+    with path.open("w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(kept_rows)
+        writer.writerows(new_rows)
 
 
 def main() -> None:
@@ -280,12 +396,15 @@ def main() -> None:
     require_tool("gh")
     require_tool("cloc")
 
-    run_date = date.today().isoformat()
+    run_started = datetime.now(timezone.utc)
+    run_date = run_started.date().isoformat()
+    run_timestamp_utc = run_started.isoformat(timespec="seconds").replace("+00:00", "Z")
+
     repo_list_path = Path(args.repo_list)
     workspace = Path(args.workspace)
     output = Path(args.output)
-
-    author_emails = {email.lower().strip() for email in args.author_email}
+    since = args.since or ""
+    author_emails = {email.lower().strip() for email in args.author_email if email.strip()}
 
     repos = read_repo_list(repo_list_path)
 
@@ -297,7 +416,6 @@ def main() -> None:
 
     for repo in repos:
         print(f"Processing {repo}")
-
         repo_dir = clone_or_update_repo(repo, workspace)
 
         current_loc_rows.extend(
@@ -318,38 +436,87 @@ def main() -> None:
             )
         )
 
-    write_csv(
-        output / "current_loc_by_language.csv",
-        current_loc_rows,
-        [
-            "run_date",
-            "repo",
-            "language",
-            "files",
-            "blank",
-            "comment",
-            "code",
-        ],
+    current_loc_fields = [
+        "run_date",
+        "repo",
+        "language",
+        "files",
+        "blank",
+        "comment",
+        "code",
+    ]
+
+    commit_activity_fields = [
+        "run_date",
+        "repo",
+        "commit_date",
+        "author_email",
+        "author_name",
+        "commits",
+        "added",
+        "deleted",
+        "net",
+    ]
+
+    run_history_fields = [
+        "run_date",
+        "run_timestamp_utc",
+        "since",
+        "author_filter",
+        "total_repos",
+        "current_files",
+        "current_code_lines",
+        "commits_since_start",
+        "added_since_start",
+        "deleted_since_start",
+        "net_since_start",
+    ]
+
+    repo_history_fields = [
+        "run_date",
+        "run_timestamp_utc",
+        "since",
+        "author_filter",
+        "repo",
+        "current_files",
+        "current_code_lines",
+        "commits_since_start",
+        "added_since_start",
+        "deleted_since_start",
+        "net_since_start",
+    ]
+
+    run_history_rows, repo_history_rows = build_history_rows(
+        repos=repos,
+        current_loc_rows=current_loc_rows,
+        commit_activity_rows=commit_activity_rows,
+        run_date=run_date,
+        run_timestamp_utc=run_timestamp_utc,
+        since=since,
+        author_emails=author_emails,
     )
 
-    write_csv(
-        output / "commit_activity_by_day.csv",
-        commit_activity_rows,
-        [
-            "run_date",
-            "repo",
-            "commit_date",
-            "author_email",
-            "author_name",
-            "commits",
-            "added",
-            "deleted",
-            "net",
-        ],
+    write_csv(output / "current_loc_by_language.csv", current_loc_rows, current_loc_fields)
+    write_csv(output / "commit_activity_by_day.csv", commit_activity_rows, commit_activity_fields)
+
+    append_or_replace_csv(
+        output / "run_summary_history.csv",
+        run_history_rows,
+        run_history_fields,
+        key_fields=["run_date", "since", "author_filter"],
+    )
+
+    append_or_replace_csv(
+        output / "repo_summary_history.csv",
+        repo_history_rows,
+        repo_history_fields,
+        key_fields=["run_date", "since", "author_filter", "repo"],
     )
 
     print(f"Wrote {output / 'current_loc_by_language.csv'}")
     print(f"Wrote {output / 'commit_activity_by_day.csv'}")
+    print(f"Updated {output / 'run_summary_history.csv'}")
+    print(f"Updated {output / 'repo_summary_history.csv'}")
 
 
 if __name__ == "__main__":
