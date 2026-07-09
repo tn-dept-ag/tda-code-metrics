@@ -2,7 +2,6 @@
 # Blank lines and comments are ignored.
 
 tn-dept-ag/tda-template
-tn-dept-ag/tdf-agol-data-backups
 tn-dept-ag/tdf-facilities
 tn-dept-ag/tda-code-metrics
 tn-dept-ag/tda-agol-content-management
@@ -10,4 +9,5 @@ tn-dept-ag/tdf-agol-admin-insights
 tn-dept-ag/tda-agol-monitor-dependencies
 tn-dept-ag/tda-admin-management
 tn-dept-ag/tda-supervisor-management
+#tn-dept-ag/tdf-agol-data-backups
 tn-dept-ag/.github
