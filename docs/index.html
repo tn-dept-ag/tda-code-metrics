@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TDA Code Metrics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --card: #ffffff;
+      --text: #1f2328;
+      --muted: #6e7781;
+      --border: #d0d7de;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+
+    header h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    main {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .card, .chart-card, .table-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.05);
+    }
+
+    .card {
+      padding: 16px;
+    }
+
+    .card .label {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+      gap: 20px;
+    }
+
+    .chart-card, .table-card {
+      padding: 18px;
+    }
+
+    .chart-card h2, .table-card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .chart-wrap {
+      height: 320px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px;
+      text-align: right;
+    }
+
+    th:first-child, td:first-child {
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .error {
+      background: #fff8c5;
+      border: 1px solid #d4a72c;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TDA Code Metrics Dashboard</h1>
+    <p id="subtitle">Loading metrics...</p>
+  </header>
+
+  <main>
+    <div id="error" class="error"></div>
+
+    <section class="cards">
+      <div class="card"><div class="label">Current code lines</div><div class="value" id="kpiCode">—</div></div>
+      <div class="card"><div class="label">Tracked repositories</div><div class="value" id="kpiRepos">—</div></div>
+      <div class="card"><div class="label">Commits since start</div><div class="value" id="kpiCommits">—</div></div>
+      <div class="card"><div class="label">Lines added since start</div><div class="value" id="kpiAdded">—</div></div>
+      <div class="card"><div class="label">Lines deleted since start</div><div class="value" id="kpiDeleted">—</div></div>
+      <div class="card"><div class="label">Net lines since start</div><div class="value" id="kpiNet">—</div></div>
+    </section>
+
+    <section class="grid">
+      <div class="chart-card">
+        <h2>Current code lines over time</h2>
+        <div class="chart-wrap"><canvas id="codeTrend"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <h2>Net lines since start over time</h2>
+        <div class="chart-wrap"><canvas id="netTrend"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <h2>Current code lines by repo</h2>
+        <div class="chart-wrap"><canvas id="repoCode"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <h2>Net lines since start by repo</h2>
+        <div class="chart-wrap"><canvas id="repoNet"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <h2>Current code lines by language</h2>
+        <div class="chart-wrap"><canvas id="languageCode"></canvas></div>
+      </div>
+
+      <div class="table-card">
+        <h2>Repository summary</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Repo</th>
+              <th>Code</th>
+              <th>Commits</th>
+              <th>Added</th>
+              <th>Deleted</th>
+              <th>Net</th>
+            </tr>
+          </thead>
+          <tbody id="repoTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const DATA_DIR = "data";
+    const numberFormat = new Intl.NumberFormat("en-US");
+
+    function parseCsvLine(line) {
+      const result = [];
+      let value = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const next = line[i + 1];
+
+        if (char === '"' && inQuotes && next === '"') {
+          value += '"';
+          i++;
+        } else if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === "," && !inQuotes) {
+          result.push(value);
+          value = "";
+        } else {
+          value += char;
+        }
+      }
+
+      result.push(value);
+      return result;
+    }
+
+    function parseCsv(text) {
+      const lines = text.trim().split(/\r?\n/).filter(Boolean);
+      if (lines.length === 0) return [];
+
+      const headers = parseCsvLine(lines[0]);
+      return lines.slice(1).map(line => {
+        const values = parseCsvLine(line);
+        const row = {};
+        headers.forEach((header, index) => row[header] = values[index] ?? "");
+        return row;
+      });
+    }
+
+    async function loadCsv(fileName) {
+      const response = await fetch(`${DATA_DIR}/${fileName}?v=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Could not load ${fileName}`);
+      return parseCsv(await response.text());
+    }
+
+    function n(value) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function fmt(value) {
+      return numberFormat.format(n(value));
+    }
+
+    function latestByTimestamp(rows) {
+      return rows.slice().sort((a, b) => (a.run_timestamp_utc || "").localeCompare(b.run_timestamp_utc || "")).at(-1);
+    }
+
+    function makeChart(id, type, labels, label, data, indexAxis = "x") {
+      new Chart(document.getElementById(id), {
+        type,
+        data: {
+          labels,
+          datasets: [{ label, data }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis,
+          plugins: {
+            legend: { display: type === "line" },
+            tooltip: {
+              callbacks: {
+                label: context => `${context.dataset.label}: ${fmt(context.raw)}`
+              }
+            }
+          },
+          scales: {
+            y: { beginAtZero: true },
+            x: { ticks: { autoSkip: true, maxRotation: 45, minRotation: 0 } }
+          }
+        }
+      });
+    }
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function renderTable(rows) {
+      const tbody = document.getElementById("repoTable");
+      tbody.innerHTML = rows.map(row => `
+        <tr>
+          <td>${row.repo}</td>
+          <td>${fmt(row.current_code_lines)}</td>
+          <td>${fmt(row.commits_since_start)}</td>
+          <td>${fmt(row.added_since_start)}</td>
+          <td>${fmt(row.deleted_since_start)}</td>
+          <td>${fmt(row.net_since_start)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function groupLanguageRows(rows) {
+      const totals = new Map();
+      rows.forEach(row => {
+        totals.set(row.language, (totals.get(row.language) || 0) + n(row.code));
+      });
+      return [...totals.entries()]
+        .map(([language, code]) => ({ language, code }))
+        .sort((a, b) => b.code - a.code)
+        .slice(0, 12);
+    }
+
+    async function main() {
+      try {
+        const [runRows, repoRows, locRows] = await Promise.all([
+          loadCsv("run_summary_history.csv"),
+          loadCsv("repo_summary_history.csv"),
+          loadCsv("current_loc_by_language.csv")
+        ]);
+
+        const latestRun = latestByTimestamp(runRows);
+        if (!latestRun) throw new Error("No run summary rows found.");
+
+        const latestRepoRows = repoRows
+          .filter(row => row.run_timestamp_utc === latestRun.run_timestamp_utc)
+          .sort((a, b) => n(b.current_code_lines) - n(a.current_code_lines));
+
+        const trendRows = runRows
+          .slice()
+          .sort((a, b) => (a.run_timestamp_utc || "").localeCompare(b.run_timestamp_utc || ""));
+
+        setText("subtitle", `Last updated ${latestRun.run_date}. Tracking commits since ${latestRun.since || "start of history"}.`);
+        setText("kpiCode", fmt(latestRun.current_code_lines));
+        setText("kpiRepos", fmt(latestRun.total_repos));
+        setText("kpiCommits", fmt(latestRun.commits_since_start));
+        setText("kpiAdded", fmt(latestRun.added_since_start));
+        setText("kpiDeleted", fmt(latestRun.deleted_since_start));
+        setText("kpiNet", fmt(latestRun.net_since_start));
+
+        makeChart(
+          "codeTrend",
+          "line",
+          trendRows.map(row => row.run_date),
+          "Current code lines",
+          trendRows.map(row => n(row.current_code_lines))
+        );
+
+        makeChart(
+          "netTrend",
+          "line",
+          trendRows.map(row => row.run_date),
+          "Net lines since start",
+          trendRows.map(row => n(row.net_since_start))
+        );
+
+        makeChart(
+          "repoCode",
+          "bar",
+          latestRepoRows.map(row => row.repo),
+          "Current code lines",
+          latestRepoRows.map(row => n(row.current_code_lines)),
+          "y"
+        );
+
+        makeChart(
+          "repoNet",
+          "bar",
+          latestRepoRows.map(row => row.repo),
+          "Net lines since start",
+          latestRepoRows.map(row => n(row.net_since_start)),
+          "y"
+        );
+
+        const languageRows = groupLanguageRows(locRows);
+        makeChart(
+          "languageCode",
+          "bar",
+          languageRows.map(row => row.language),
+          "Current code lines",
+          languageRows.map(row => row.code),
+          "y"
+        );
+
+        renderTable(latestRepoRows);
+      } catch (error) {
+        const errorBox = document.getElementById("error");
+        errorBox.style.display = "block";
+        errorBox.textContent = error.message;
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

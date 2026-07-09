@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Sync main, collect metrics, commit, and push
+      - name: Sync main, collect metrics, copy dashboard data, commit, and push
         env:
           GH_TOKEN: ${{ secrets.METRICS_REPO_TOKEN }}
         shell: bash
@@ -56,10 +56,13 @@ jobs:
               --author-email colintimothystiles@gmail.com \
               --since 2026-01-01
 
+            mkdir -p docs/data
+            cp data/*.csv docs/data/
+
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-            git add data/*.csv
+            git add data/*.csv docs/data/*.csv
 
             if git diff --cached --quiet; then
               echo "No metrics changes to commit"
