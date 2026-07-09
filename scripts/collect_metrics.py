@@ -93,8 +93,21 @@ def clone_or_update_repo(repo: str, workspace: Path) -> Path:
         run_command(["git", "pull", "--ff-only"], cwd=repo_dir, check=False)
         return repo_dir
 
-    run_command(["gh", "repo", "clone", repo, str(repo_dir)])
-    return repo_dir
+    # 1) Try a plain git clone (works for public repos)
+    try:
+        run_command(["git", "clone", f"https://github.com/{repo}.git", str(repo_dir)])
+        return repo_dir
+    except RuntimeError:
+        # 2) If that fails and we have a GITHUB_TOKEN, try an authenticated clone
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            auth_url = f"https://x-access-token:{token}@github.com/{repo}.git"
+            run_command(["git", "clone", auth_url, str(repo_dir)])
+            return repo_dir
+
+        # 3) As a last resort, try gh repo clone (may still fail if gh is unauthenticated)
+        run_command(["gh", "repo", "clone", repo, str(repo_dir)])
+        return repo_dir
 
 
 def collect_current_loc(repo: str, repo_dir: Path, run_date: str) -> list[dict[str, str | int]]:
