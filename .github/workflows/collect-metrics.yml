@@ -1,0 +1,49 @@
+name: Collect Code Metrics
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 6 * * 1"
+      timezone: "America/New_York"
+
+permissions:
+  contents: write
+
+jobs:
+  collect-metrics:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out metrics repo
+        uses: actions/checkout@v4
+
+      - name: Install cloc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cloc
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Collect metrics
+        env:
+          GH_TOKEN: ${{ secrets.METRICS_REPO_TOKEN }}
+        run: |
+          python scripts/collect_metrics.py \
+            --repo-list config/repos.txt \
+            --workspace .cache/repos \
+            --output data \
+            --author-email colin.stiles@tn.gov \
+            --author-email colintimothystiles@gmail.com \
+            --since 2026-01-01
+
+      - name: Commit updated metrics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/*.csv
+          git diff --cached --quiet || git commit -m "Update code metrics"
+          git push
