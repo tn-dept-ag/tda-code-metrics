@@ -1,7 +1,6 @@
 # One owner/repo per line.
 # Blank lines and comments are ignored.
 
-colin-tda/colin-tda
 tn-dept-ag/tda-template
 tn-dept-ag/tdf-agol-data-backups
 tn-dept-ag/tdf-facilities
