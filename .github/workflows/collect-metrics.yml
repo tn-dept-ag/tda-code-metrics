@@ -55,4 +55,4 @@ jobs:
           git commit -m "Update code metrics"
 
           git pull --rebase origin main
-          git push
+          git push origin main
