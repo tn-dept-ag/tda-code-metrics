@@ -3,92 +3,125 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TDA Code Metrics Dashboard</title>
+  <title>Tennessee Department of Agriculture Code Metrics Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f6f8fa;
-      --card: #ffffff;
-      --text: #1f2328;
-      --muted: #6e7781;
-      --border: #d0d7de;
+      --bg: #f4f1e9; /* Light Tan */
+      --card: #fefcf5; /* Cream */
+      --text: #4d4841; /* Dark Brown */
+      --muted: #8c8273; /* Muted Brown */
+      --border: #e0dace; /* Light Tan-Gray */
+      --primary: #4a7c59; /* Forest Green */
+      --accent: #b95c50; /* Rusty Red */
     }
 
     body {
       margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background: var(--bg);
       color: var(--text);
+      -webkit-font-smoothing: antialiased;
     }
 
     header {
-      padding: 24px;
-      border-bottom: 1px solid var(--border);
-      background: var(--card);
+      padding: 40px 24px;
+      background: linear-gradient(135deg, var(--accent), var(--primary));
+      color: white;
+      text-align: center;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      margin-bottom: 32px;
     }
 
     header h1 {
-      margin: 0 0 6px;
-      font-size: 28px;
+      margin: 0 0 8px;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.025em;
     }
 
     header p {
       margin: 0;
-      color: var(--muted);
+      color: #e0e7ff;
+      font-size: 15px;
+      font-weight: 500;
     }
 
     main {
       max-width: 1300px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 0 24px 40px;
     }
 
     .cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 16px;
-      margin-bottom: 20px;
+      gap: 20px;
+      margin-bottom: 32px;
     }
 
     .card, .chart-card, .table-card {
       background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.05);
+      border-radius: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
     .card {
-      padding: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     }
 
     .card .label {
-      font-size: 13px;
+      font-size: 14px;
+      font-weight: 600;
       color: var(--muted);
       margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
 
     .card .value {
-      font-size: 28px;
+      font-size: 32px;
       font-weight: 700;
+      color: var(--primary);
     }
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      gap: 24px;
     }
 
     .chart-card, .table-card {
-      padding: 18px;
+      padding: 24px;
     }
 
     .chart-card h2, .table-card h2 {
-      margin: 0 0 12px;
+      margin: 0 0 20px;
       font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
     }
 
     .chart-wrap {
       height: 320px;
+      position: relative;
+    }
+
+    .table-card {
+      grid-column: 1 / -1; /* Make the table span full width */
+      overflow-x: auto;
     }
 
     table {
@@ -99,7 +132,7 @@
 
     th, td {
       border-bottom: 1px solid var(--border);
-      padding: 8px;
+      padding: 12px 16px;
       text-align: right;
     }
 
@@ -110,21 +143,36 @@
     th {
       color: var(--muted);
       font-weight: 600;
+      background-color: #f9fafb;
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+    }
+
+    tbody tr {
+      transition: background-color 0.15s ease;
+    }
+
+    tbody tr:hover {
+      background-color: #f9fafb;
     }
 
     .error {
-      background: #fff8c5;
-      border: 1px solid #d4a72c;
+      background: #fef2f2;
+      border: 1px solid #f87171;
+      color: #991b1b;
       border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 20px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-weight: 500;
       display: none;
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>TDA Code Metrics Dashboard</h1>
+    <h1>Tennessee Department of Agriculture</h1>
+    <h2> Code Metrics Dashboard</h2>
     <p id="subtitle">Loading metrics...</p>
   </header>
 
@@ -135,9 +183,9 @@
       <div class="card"><div class="label">Current code lines</div><div class="value" id="kpiCode">—</div></div>
       <div class="card"><div class="label">Tracked repositories</div><div class="value" id="kpiRepos">—</div></div>
       <div class="card"><div class="label">Commits since start</div><div class="value" id="kpiCommits">—</div></div>
-      <div class="card"><div class="label">Lines added since start</div><div class="value" id="kpiAdded">—</div></div>
-      <div class="card"><div class="label">Lines deleted since start</div><div class="value" id="kpiDeleted">—</div></div>
-      <div class="card"><div class="label">Net lines since start</div><div class="value" id="kpiNet">—</div></div>
+      <div class="card"><div class="label">Lines added</div><div class="value" id="kpiAdded">—</div></div>
+      <div class="card"><div class="label">Lines deleted</div><div class="value" id="kpiDeleted">—</div></div>
+      <div class="card"><div class="label">Net lines</div><div class="value" id="kpiNet">—</div></div>
     </section>
 
     <section class="grid">
@@ -167,7 +215,7 @@
       </div>
 
       <div class="table-card">
-        <h2>Repository summary</h2>
+        <h2>Repository Summary</h2>
         <table>
           <thead>
             <tr>
@@ -186,6 +234,11 @@
   </main>
 
   <script>
+    // Set Chart.js global font to match the modern theme
+    Chart.defaults.font.family = "'Inter', system-ui, -apple-system, sans-serif";
+    Chart.defaults.color = "#6b7280";
+    Chart.defaults.scale.grid.color = "#f3f4f6";
+
     const DATA_DIR = "data";
     const numberFormat = new Intl.NumberFormat("en-US");
 
@@ -248,11 +301,25 @@
     }
 
     function makeChart(id, type, labels, label, data, indexAxis = "x") {
+      // Use earth-tone theme colors for charts
+      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+      const bgColors = type === 'line' ? 'rgba(74, 124, 89, 0.1)' : 'rgba(74, 124, 89, 0.8)';
+      const borderColors = primaryColor;
+
       new Chart(document.getElementById(id), {
         type,
         data: {
           labels,
-          datasets: [{ label, data }]
+          datasets: [{
+            label,
+            data,
+            backgroundColor: bgColors,
+            borderColor: borderColors,
+            borderWidth: 2,
+            fill: type === 'line',
+            tension: 0.3, // Add smooth curves to line charts
+            borderRadius: type === 'bar' ? 4 : 0 // Rounded corners for bars
+          }]
         },
         options: {
           responsive: true,
@@ -261,6 +328,11 @@
           plugins: {
             legend: { display: type === "line" },
             tooltip: {
+              backgroundColor: 'rgba(17, 24, 39, 0.9)',
+              titleFont: { family: "'Inter', sans-serif", size: 13 },
+              bodyFont: { family: "'Inter', sans-serif", size: 13 },
+              padding: 10,
+              cornerRadius: 8,
               callbacks: {
                 label: context => `${context.dataset.label}: ${fmt(context.raw)}`
               }
@@ -282,7 +354,7 @@
       const tbody = document.getElementById("repoTable");
       tbody.innerHTML = rows.map(row => `
         <tr>
-          <td>${row.repo}</td>
+          <td><strong>${row.repo}</strong></td>
           <td>${fmt(row.current_code_lines)}</td>
           <td>${fmt(row.commits_since_start)}</td>
           <td>${fmt(row.added_since_start)}</td>
