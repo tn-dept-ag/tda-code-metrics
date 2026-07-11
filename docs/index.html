@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tennessee Department of Agriculture Code Metrics Dashboard</title>
+  <title>TDA's Code Metrics Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,6 +48,36 @@
       color: #e0e7ff;
       font-size: 15px;
       font-weight: 500;
+    }
+
+    header .subtitle-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      min-height: 28px; /* Prevent layout shift while loading */
+    }
+
+    header a {
+      color: inherit;
+      text-decoration: none;
+    }
+    header a:hover {
+      text-decoration: underline;
+    }
+
+    #yearFilter {
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background-color: var(--card);
+      color: var(--text);
+      cursor: pointer;
     }
 
     main {
@@ -171,9 +201,11 @@
 </head>
 <body>
   <header>
-    <h1>Tennessee Department of Agriculture</h1>
-    <h2> Code Metrics Dashboard</h2>
-    <p id="subtitle">Loading metrics...</p>
+    <h1>Code Metrics Dashboard</h1>
+    <h2><a href="https://github.com/tn-dept-ag">Tennessee Dept of Agriculture on GitHub</a></h2>
+    <div class="subtitle-container">
+      <p id="subtitle">Loading metrics...</p>
+    </div>
   </header>
 
   <main>
@@ -241,6 +273,7 @@
 
     const DATA_DIR = "data";
     const numberFormat = new Intl.NumberFormat("en-US");
+    let allRuns = [], allRepoRows = [], allLocRows = [];
 
     function parseCsvLine(line) {
       const result = [];
@@ -298,6 +331,10 @@
 
     function latestByTimestamp(rows) {
       return rows.slice().sort((a, b) => (a.run_timestamp_utc || "").localeCompare(b.run_timestamp_utc || "")).at(-1);
+    }
+
+    function clearCharts() {
+      document.querySelectorAll('canvas').forEach(canvas => Chart.getChart(canvas)?.destroy());
     }
 
     function makeChart(id, type, labels, label, data, indexAxis = "x") {
@@ -375,13 +412,12 @@
         .slice(0, 12);
     }
 
-    async function main() {
+    function renderDashboard(selectedYear) {
       try {
-        const [runRows, repoRows, locRows] = await Promise.all([
-          loadCsv("run_summary_history.csv"),
-          loadCsv("repo_summary_history.csv"),
-          loadCsv("current_loc_by_language.csv")
-        ]);
+        const runRows = allRuns.filter(r => r.since.startsWith(selectedYear));
+        const repoRows = allRepoRows.filter(r => r.since.startsWith(selectedYear));
+        // locRows are point-in-time and not filtered by year.
+        const locRows = allLocRows;
 
         const latestRun = latestByTimestamp(runRows);
         if (!latestRun) throw new Error("No run summary rows found.");
@@ -451,6 +487,42 @@
         const errorBox = document.getElementById("error");
         errorBox.style.display = "block";
         errorBox.textContent = error.message;
+      }
+    }
+
+    function setupYearFilter() {
+      const years = [...new Set(allRuns.map(r => r.since.substring(0, 4)))].sort((a, b) => b.localeCompare(a));
+      if (years.length <= 1) return;
+
+      const subtitleContainer = document.querySelector('.subtitle-container');
+      const select = document.createElement('select');
+      select.id = 'yearFilter';
+      select.innerHTML = years.map(year => `<option value="${year}">${year} Period</option>`).join('');
+
+      select.addEventListener('change', (e) => {
+        clearCharts();
+        renderDashboard(e.target.value);
+      });
+
+      subtitleContainer.appendChild(select);
+      return years[0]; // Return the latest year
+    }
+
+    async function main() {
+      try {
+        [allRuns, allRepoRows, allLocRows] = await Promise.all([
+          loadCsv("run_summary_history.csv"),
+          loadCsv("repo_summary_history.csv"),
+          loadCsv("current_loc_by_language.csv")
+        ]);
+
+        const latestYear = setupYearFilter();
+        renderDashboard(latestYear || new Date().getFullYear().toString());
+
+      } catch (error) {
+        const errorBox = document.getElementById("error");
+        errorBox.style.display = "block";
+        errorBox.textContent = `Failed to load and render metrics: ${error.message}`;
       }
     }
 
