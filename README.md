@@ -33,6 +33,8 @@ https://tn-dept-ag.github.io/tda-code-metrics/
 
 The dashboard updates when the GitHub Actions workflow successfully regenerates the CSV outputs, copies them into `docs/data/`, and pushes the updated files to `main`.
 
+The dashboard is not live in real time. It updates after each successful workflow run and after GitHub Pages serves the updated committed files.
+
 ## Repository Structure
 
 ```text
@@ -93,7 +95,9 @@ tn-dept-ag/tdf-agol-data-backups
 tn-dept-ag/.github
 ```
 
-When adding or removing repositories, also confirm that the GitHub token used by the workflow has access to the same repository list.
+When adding or removing repositories, also confirm that the GitHub App installation has access to the same repository list.
+
+The current workflow is configured for the `tn-dept-ag` owner. If repositories from another owner are added, the GitHub App must also be installed on that owner, or the workflow must be updated to request an installation token for that owner.
 
 ## Output Files
 
@@ -171,36 +175,96 @@ Approximate Eastern time:
 
 The workflow performs these steps:
 
-1. Checks out this repository.
-2. Installs `cloc`.
-3. Sets up Python.
-4. Runs `scripts/collect_metrics.py`.
-5. Updates CSV files in `data/`.
-6. Copies CSV files to `docs/data/`.
-7. Commits and pushes the updated metrics files.
+1. Creates a temporary GitHub App installation token.
+2. Checks out this repository using the GitHub App token.
+3. Installs `cloc`.
+4. Sets up Python.
+5. Runs `scripts/collect_metrics.py`.
+6. Updates CSV files in `data/`.
+7. Copies CSV files to `docs/data/`.
+8. Commits and pushes the updated metrics files using the GitHub App bot identity.
 
-## Required GitHub Secret
+The workflow is configured to sync with the latest `main` branch before generating and pushing metrics. It also retries the push if `main` changes while the workflow is running.
+
+## GitHub App Authentication
+
+This repository uses a GitHub App for workflow authentication instead of a personal access token.
+
+The GitHub App is used to generate a temporary installation token during each workflow run. That token is used to:
+
+1. Clone or fetch the tracked repositories listed in `config/repos.txt`.
+2. Commit updated metrics files back to `tn-dept-ag/tda-code-metrics`.
+
+### Required GitHub App permissions
+
+The GitHub App should be installed on the repositories listed in `config/repos.txt`, including this repository.
+
+Minimum repository permissions:
+
+| Permission | Access |
+|---|---|
+| Contents | Read and write |
+| Metadata | Read-only |
+
+`Contents: Read and write` is needed because the workflow reads tracked repositories and writes updated CSV files back to this repository.
+
+### Required repository variable
+
+The workflow uses this repository variable:
+
+```text
+APP_ID
+```
+
+Location:
+
+```text
+tn-dept-ag/tda-code-metrics
+→ Settings
+→ Secrets and variables
+→ Actions
+→ Variables
+```
+
+The value should be the numeric GitHub App ID.
+
+### Required repository secret
 
 The workflow uses this repository secret:
+
+```text
+APP_PRIVATE_KEY
+```
+
+Location:
+
+```text
+tn-dept-ag/tda-code-metrics
+→ Settings
+→ Secrets and variables
+→ Actions
+→ Secrets
+```
+
+The value should be the full GitHub App private key, including the begin and end lines:
+
+```text
+-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----
+```
+
+Do not commit the private key to the repository.
+
+### Removed PAT secret
+
+The previous PAT-based secret is no longer used:
 
 ```text
 METRICS_REPO_TOKEN
 ```
 
-This secret should contain a GitHub personal access token with read access to the repositories listed in:
-
-```text
-config/repos.txt
-```
-
-For a fine-grained personal access token, use repository-level access with at least:
-
-```text
-Contents: Read-only
-Metadata: Read-only
-```
-
-Do not commit the token to the repository.
+This secret should remain deleted unless the workflow is intentionally reverted to PAT-based authentication.
 
 ## Local Setup
 
@@ -232,6 +296,8 @@ If needed, authenticate with:
 ```cmd
 gh auth login
 ```
+
+Local runs use your local GitHub CLI authentication. They do not use the GitHub App secrets or workflow installation token.
 
 ## Run Locally
 
@@ -301,6 +367,18 @@ Example:
 
 Current LOC metrics are not affected by this date because they represent the current state of each repository.
 
+## Updating Tracked Repositories
+
+When adding, removing, renaming, archiving, or restoring repositories:
+
+1. Update `config/repos.txt`.
+2. Confirm the GitHub App is installed on each listed repository.
+3. Confirm this repository is still included in the GitHub App installation.
+4. Run the workflow manually from the Actions tab.
+5. Confirm the dashboard still loads.
+
+If a repository is outside `tn-dept-ag`, either keep it out of `config/repos.txt` or update the workflow and GitHub App installation strategy to support that owner.
+
 ## Security Notes
 
 Keep this repository private unless the following information is acceptable to expose:
@@ -313,6 +391,7 @@ Keep this repository private unless the following information is acceptable to e
 
 Do not commit:
 
+- GitHub App private keys.
 - Personal access tokens.
 - `.env` files.
 - Cloned repository caches.
@@ -346,8 +425,28 @@ Check that:
 
 1. The repository name in `config/repos.txt` is correct.
 2. The repository still exists.
-3. The workflow token has access to the repository.
-4. Organization SSO authorization is complete if required.
+3. The GitHub App is installed on the repository.
+4. The workflow is requesting a token for the correct owner.
+
+### `Resource not accessible by integration`
+
+This usually means the GitHub App token does not have access to the repository or permission being requested.
+
+Check that:
+
+1. The GitHub App is installed on the repository.
+2. The app has `Contents: Read and write` permission.
+3. The repository is included in the app installation's selected repository list.
+4. The workflow is using the expected `APP_ID` and `APP_PRIVATE_KEY` values.
+
+### `Bad credentials` or app token creation fails
+
+Check that:
+
+1. `APP_ID` is the numeric GitHub App ID.
+2. `APP_PRIVATE_KEY` contains the full private key text.
+3. The private key has not been deleted or replaced in the GitHub App settings.
+4. The GitHub App has been installed on `tn-dept-ag`.
 
 ### `PermissionError: Permission denied` for a CSV
 
@@ -357,14 +456,17 @@ Close the CSV file in Excel or any other program that may have locked it, then r
 
 Start a new workflow run instead of rerunning an old failed job after workflow changes.
 
-The workflow is designed to sync with the latest `main` branch before pushing updated metrics.
+The workflow is designed to sync with the latest `main` branch before pushing updated metrics and to retry if the remote branch changes while the workflow is running.
 
 ## Maintenance Checklist
 
 Use this checklist when maintaining the repository:
 
 - Update `config/repos.txt` when repositories are added, renamed, archived, or removed.
-- Update the GitHub PAT repository access when `config/repos.txt` changes.
-- Review the workflow after each GitHub token expiration or permission change.
+- Update the GitHub App installation when `config/repos.txt` changes.
+- Keep `APP_ID` as a repository variable.
+- Keep `APP_PRIVATE_KEY` as a repository secret.
+- Rotate the GitHub App private key if it is exposed, replaced, or no longer trusted.
+- Do not recreate `METRICS_REPO_TOKEN` unless intentionally reverting to PAT-based authentication.
 - Update the `--since` date when beginning a new reporting period.
 - Confirm the dashboard still loads after changes to `docs/index.html` or `docs/data/`.
