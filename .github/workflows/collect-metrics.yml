@@ -11,8 +11,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# This controls the default GITHUB_TOKEN only.
-# Repository read/write is handled by the GitHub App token below.
 permissions:
   contents: read
 
@@ -54,7 +52,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Sync main, discover repos, collect metrics, commit, and push
+      - name: Sync main, discover repos, collect metrics, mask private repos, commit, and push
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         shell: bash
@@ -64,35 +62,121 @@ jobs:
           generate_metrics_commit() {
             git fetch origin main
             git checkout -B main origin/main
+            git reset --hard origin/main
 
             rm -rf .cache/repos
+            mkdir -p .cache docs/data
 
             gh repo list tn-dept-ag \
               --limit 1000 \
               --no-archived \
               --source \
-              --json nameWithOwner \
-              --jq '.[].nameWithOwner' \
-              | sort -u > config/repos.txt
+              --json nameWithOwner,isPrivate \
+              --jq '.[] | [.nameWithOwner, .isPrivate] | @tsv' \
+              | sort -u > .cache/repo_visibility.tsv
 
-            echo "Repositories selected for tracking:"
-            cat config/repos.txt
+            cut -f1 .cache/repo_visibility.tsv > .cache/repos.txt
+
+            echo "Repository discovery complete."
+            echo "Repository count: $(wc -l < .cache/repos.txt)"
 
             python scripts/collect_metrics.py \
-              --repo-list config/repos.txt \
+              --repo-list .cache/repos.txt \
               --workspace .cache/repos \
               --output data \
               --author-email colin.stiles@tn.gov \
               --author-email colintimothystiles@gmail.com \
               --since 2026-01-01
 
-            mkdir -p docs/data
-            cp data/*.csv docs/data/
+            python - <<'PY'
+          from __future__ import annotations
+
+          import csv
+          import hashlib
+          from pathlib import Path
+
+          source_dir = Path("data")
+          public_dir = Path("docs/data")
+          visibility_path = Path(".cache/repo_visibility.tsv")
+
+          public_dir.mkdir(parents=True, exist_ok=True)
+
+          repo_is_private: dict[str, bool] = {}
+
+          with visibility_path.open("r", encoding="utf-8", newline="") as infile:
+              for line in infile:
+                  parts = line.rstrip("\n").split("\t")
+                  if len(parts) != 2:
+                      continue
+
+                  repo, is_private_raw = parts
+                  repo_is_private[repo] = is_private_raw.lower() == "true"
+
+
+          def private_repo_alias(repo: str) -> str:
+              owner = repo.split("/", 1)[0] if "/" in repo else "repo"
+              digest = hashlib.sha256(repo.encode("utf-8")).hexdigest()
+              alias_number = int(digest[:8], 16) % 10000
+              return f"{owner}/###-{alias_number:04d}"
+
+
+          def public_safe_repo_name(repo: str) -> str:
+              if repo_is_private.get(repo, True):
+                  return private_repo_alias(repo)
+
+              return repo
+
+
+          def dedupe_rows(filename: str, rows: list[dict[str, str]]) -> list[dict[str, str]]:
+              if filename == "run_summary_history.csv":
+                  keyed = {}
+                  for row in rows:
+                      keyed[row.get("run_date", "")] = row
+                  return list(keyed.values())
+
+              if filename == "repo_summary_history.csv":
+                  keyed = {}
+                  for row in rows:
+                      keyed[(row.get("run_date", ""), row.get("repo", ""))] = row
+                  return list(keyed.values())
+
+              return rows
+
+
+          for path in source_dir.glob("*.csv"):
+              with path.open("r", encoding="utf-8", newline="") as infile:
+                  reader = csv.DictReader(infile)
+                  fieldnames = reader.fieldnames
+
+                  if not fieldnames:
+                      continue
+
+                  rows = []
+                  for row in reader:
+                      if "repo" in row:
+                          row["repo"] = public_safe_repo_name(row["repo"])
+                      rows.append(row)
+
+              rows = dedupe_rows(path.name, rows)
+
+              # Rewrite data/*.csv in public-safe form.
+              with path.open("w", encoding="utf-8", newline="") as outfile:
+                  writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+                  writer.writeheader()
+                  writer.writerows(rows)
+
+              # Copy the same public-safe CSV to docs/data for GitHub Pages.
+              output_path = public_dir / path.name
+              with output_path.open("w", encoding="utf-8", newline="") as outfile:
+                  writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+                  writer.writeheader()
+                  writer.writerows(rows)
+          PY
 
             git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
             git config user.email "${{ steps.app-user.outputs.user-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
 
-            git add config/repos.txt data/*.csv docs/data/*.csv
+            git add data/*.csv docs/data/*.csv
 
             if git diff --cached --quiet; then
               echo "No metrics changes to commit"
