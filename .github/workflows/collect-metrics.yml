@@ -54,7 +54,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Sync main, collect metrics, commit, and push
+      - name: Sync main, discover repos, collect metrics, commit, and push
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         shell: bash
@@ -66,6 +66,17 @@ jobs:
             git checkout -B main origin/main
 
             rm -rf .cache/repos
+
+            gh repo list tn-dept-ag \
+              --limit 1000 \
+              --no-archived \
+              --source \
+              --json nameWithOwner \
+              --jq '.[].nameWithOwner' \
+              | sort -u > config/repos.txt
+
+            echo "Repositories selected for tracking:"
+            cat config/repos.txt
 
             python scripts/collect_metrics.py \
               --repo-list config/repos.txt \
@@ -81,7 +92,7 @@ jobs:
             git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
             git config user.email "${{ steps.app-user.outputs.user-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
 
-            git add data/*.csv docs/data/*.csv
+            git add config/repos.txt data/*.csv docs/data/*.csv
 
             if git diff --cached --quiet; then
               echo "No metrics changes to commit"
