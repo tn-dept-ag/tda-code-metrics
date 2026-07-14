@@ -83,15 +83,16 @@ Example:
 
 ```text
 # One owner/repo per line.
-tn-dept-ag/tda-template
-tn-dept-ag/tdf-facilities
+tn-dept-ag/###-2305 (PRIVATE REPO)
+tn-dept-ag/###-8886 (PRIVATE REPO)
 tn-dept-ag/tda-code-metrics
-tn-dept-ag/tda-agol-content-management
-tn-dept-ag/tdf-agol-admin-insights
-tn-dept-ag/tda-agol-monitor-dependencies
-tn-dept-ag/tda-admin-management
-tn-dept-ag/tda-supervisor-management
-tn-dept-ag/tdf-agol-data-backups
+tn-dept-ag/###-1371 (PRIVATE REPO)
+tn-dept-ag/###-2615 (PRIVATE REPO)
+tn-dept-ag/###-6673 (PRIVATE REPO)
+tn-dept-ag/###-2249 (PRIVATE REPO)
+tn-dept-ag/###-5427 (PRIVATE REPO)
+tn-dept-ag/###-9580 (PRIVATE REPO)
+tn-dept-ag/###-8658 (PRIVATE REPO)
 tn-dept-ag/.github
 ```
 
