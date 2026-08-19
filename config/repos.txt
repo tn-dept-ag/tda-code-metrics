@@ -14,3 +14,5 @@ tn-dept-ag/.github
 tn-dept-ag/tda-agol-metadata-tracking
 tn-dept-ag/tda-ipp-reporting-tool
 tn-dept-ag/tda-wsl-codex-setup
+tn-dept-ag/tdf-vendor-services-cleanup
+tn-dept-ag/tda-markitdown-helper
