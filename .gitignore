@@ -3,6 +3,9 @@
 repos/
 tmp/
 
+# Local repository lists can reveal private repository names.
+config/repos.txt
+
 # Python
 __pycache__/
 *.pyc
