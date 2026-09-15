@@ -197,6 +197,17 @@
       font-weight: 500;
       display: none;
     }
+
+    .warning {
+      background: #fffbeb;
+      border: 1px solid #fbbf24;
+      color: #92400e;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-weight: 500;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -209,7 +220,8 @@
   </header>
 
   <main>
-    <div id="error" class="error"></div>
+    <div id="error" class="error" role="alert"></div>
+    <div id="warning" class="warning" role="status"></div>
 
     <section class="cards">
       <div class="card"><div class="label">Current code lines</div><div class="value" id="kpiCode">—</div></div>
@@ -387,6 +399,21 @@
       document.getElementById(id).textContent = value;
     }
 
+    function updateFreshnessWarning(runDate) {
+      const warning = document.getElementById("warning");
+      const updatedAt = new Date(`${runDate}T00:00:00Z`);
+      const ageInDays = Math.floor((Date.now() - updatedAt.getTime()) / 86_400_000);
+
+      if (!Number.isFinite(ageInDays) || ageInDays <= 8) {
+        warning.style.display = "none";
+        warning.textContent = "";
+        return;
+      }
+
+      warning.textContent = `Metrics data is ${ageInDays} days old. The weekly collection workflow may need attention.`;
+      warning.style.display = "block";
+    }
+
     function renderTable(rows) {
       const tbody = document.getElementById("repoTable");
       tbody.innerHTML = rows.map(row => `
@@ -431,6 +458,7 @@
           .sort((a, b) => (a.run_timestamp_utc || "").localeCompare(b.run_timestamp_utc || ""));
 
         setText("subtitle", `Last updated ${latestRun.run_date}. Tracking commits since ${latestRun.since || "start of history"}.`);
+        updateFreshnessWarning(latestRun.run_date);
         setText("kpiCode", fmt(latestRun.current_code_lines));
         setText("kpiRepos", fmt(latestRun.total_repos));
         setText("kpiCommits", fmt(latestRun.commits_since_start));

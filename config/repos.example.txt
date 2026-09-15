@@ -1,0 +1,5 @@
+# One owner/repo per line.
+# Blank lines and comments are ignored.
+# Copy this file to config/repos.txt for local manual runs.
+
+tn-dept-ag/tda-code-metrics

@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Runs every Monday at 6:00 AM UTC.
-    - cron: "0 6 * * 1"
+    # Runs every Monday at 6:17 AM UTC. Avoiding the top of the hour reduces
+    # the chance of GitHub delaying a scheduled workflow during peak load.
+    - cron: "17 6 * * 1"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -120,7 +121,15 @@ jobs:
               return f"{owner}/###-{alias_number:04d}"
 
 
+          def is_private_repo_alias(repo: str) -> bool:
+              name = repo.split("/", 1)[1] if "/" in repo else repo
+              return len(name) == 8 and name.startswith("###-") and name[4:].isdigit()
+
+
           def public_safe_repo_name(repo: str) -> str:
+              if is_private_repo_alias(repo):
+                  return repo
+
               if repo_is_private.get(repo, True):
                   return private_repo_alias(repo)
 

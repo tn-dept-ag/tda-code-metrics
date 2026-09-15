@@ -43,7 +43,7 @@ tda-code-metrics/
 │  └─ workflows/
 │     └─ collect-metrics.yml
 ├─ config/
-│  └─ repos.txt
+│  └─ repos.example.txt
 ├─ data/
 │  ├─ current_loc_by_language.csv
 │  ├─ commit_activity_by_day.csv
@@ -65,7 +65,10 @@ tda-code-metrics/
 
 ## Tracked Repositories
 
-Repositories are listed in:
+Scheduled workflow runs discover repositories automatically from the `tn-dept-ag` GitHub organization.
+The workflow includes non-archived source repositories visible to the GitHub App installation token, so newly created repositories are picked up on the next scheduled or manual workflow run after the app has access.
+
+For local manual runs, create a local repository list at:
 
 ```text
 config/repos.txt
@@ -96,9 +99,12 @@ tn-dept-ag/###-8658 (PRIVATE REPO)
 tn-dept-ag/.github
 ```
 
-When adding or removing repositories, also confirm that the GitHub App installation has access to the same repository list.
+`config/repos.txt` is ignored because private repository names are sensitive metadata.
+Use the tracked template at `config/repos.example.txt` when creating a local list.
 
-The current workflow is configured for the `tn-dept-ag` owner. If repositories from another owner are added, the GitHub App must also be installed on that owner, or the workflow must be updated to request an installation token for that owner.
+When adding or removing repositories, confirm that the GitHub App installation has access to the intended repositories.
+
+The current workflow is configured for the `tn-dept-ag` owner. If repositories from another owner need to be included, the workflow and GitHub App installation strategy must be updated to discover and request an installation token for that owner.
 
 ## Output Files
 
@@ -162,17 +168,17 @@ The workflow can be run two ways:
 Current schedule:
 
 ```yaml
-cron: "0 6 * * 1"
+cron: "17 6 * * 1"
 ```
 
-This runs every Monday at 6:00 AM UTC.
+This runs every Monday at 6:17 AM UTC, offset from the top of the hour to reduce the chance of schedule delays during peak GitHub Actions load.
 
 Approximate Eastern time:
 
 | Time of year | Local run time |
 |---|---|
-| Eastern Standard Time | Monday at 1:00 AM |
-| Eastern Daylight Time | Monday at 2:00 AM |
+| Eastern Standard Time | Monday at 1:17 AM |
+| Eastern Daylight Time | Monday at 2:17 AM |
 
 The workflow performs these steps:
 
@@ -193,7 +199,7 @@ This repository uses a GitHub App for workflow authentication instead of a perso
 
 The GitHub App is used to generate a temporary installation token during each workflow run. That token is used to:
 
-1. Clone or fetch the tracked repositories listed in `config/repos.txt`.
+1. Discover, clone, or fetch non-archived source repositories in `tn-dept-ag` that are visible to the GitHub App installation token.
 2. Commit updated metrics files back to `tn-dept-ag/tda-code-metrics`.
 
 ### Required GitHub App permissions
@@ -305,6 +311,8 @@ Local runs use your local GitHub CLI authentication. They do not use the GitHub 
 Run the collector:
 
 ```cmd
+copy config\repos.example.txt config\repos.txt
+notepad config\repos.txt
 python -u scripts\collect_metrics.py --repo-list config\repos.txt --workspace .cache\repos --output data --author-email YOUR_EMAIL@example.com --since 2026-01-01
 ```
 
@@ -370,15 +378,15 @@ Current LOC metrics are not affected by this date because they represent the cur
 
 ## Updating Tracked Repositories
 
+The scheduled workflow automatically discovers non-archived source repositories in `tn-dept-ag`.
 When adding, removing, renaming, archiving, or restoring repositories:
 
-1. Update `config/repos.txt`.
-2. Confirm the GitHub App is installed on each listed repository.
-3. Confirm this repository is still included in the GitHub App installation.
-4. Run the workflow manually from the Actions tab.
-5. Confirm the dashboard still loads.
+1. Confirm the GitHub App is installed on the intended repositories.
+2. Confirm this repository is still included in the GitHub App installation.
+3. Run the workflow manually from the Actions tab.
+4. Confirm the dashboard still loads.
 
-If a repository is outside `tn-dept-ag`, either keep it out of `config/repos.txt` or update the workflow and GitHub App installation strategy to support that owner.
+If a repository is outside `tn-dept-ag`, either keep it out of the automated metrics scope or update the workflow and GitHub App installation strategy to support that owner.
 
 ## Security Notes
 
@@ -395,6 +403,7 @@ Do not commit:
 - GitHub App private keys.
 - Personal access tokens.
 - `.env` files.
+- `config/repos.txt` when it contains private repository names.
 - Cloned repository caches.
 - Local virtual environments.
 - Temporary output folders.
@@ -405,6 +414,7 @@ The `.gitignore` should continue excluding local caches such as:
 .cache/
 repos/
 .venv/
+config/repos.txt
 ```
 
 ## Troubleshooting
@@ -424,7 +434,7 @@ If a tool was just installed, fully close and reopen VS Code.
 
 Check that:
 
-1. The repository name in `config/repos.txt` is correct.
+1. The repository name is correct.
 2. The repository still exists.
 3. The GitHub App is installed on the repository.
 4. The workflow is requesting a token for the correct owner.
@@ -463,8 +473,8 @@ The workflow is designed to sync with the latest `main` branch before pushing up
 
 Use this checklist when maintaining the repository:
 
-- Update `config/repos.txt` when repositories are added, renamed, archived, or removed.
-- Update the GitHub App installation when `config/repos.txt` changes.
+- Keep private repository lists out of Git; use local `config/repos.txt` only for manual runs.
+- Update the GitHub App installation when repositories are added, renamed, archived, restored, or removed from scope.
 - Keep `APP_ID` as a repository variable.
 - Keep `APP_PRIVATE_KEY` as a repository secret.
 - Rotate the GitHub App private key if it is exposed, replaced, or no longer trusted.
