@@ -103,7 +103,9 @@ def clone_or_update_repo(repo: str, workspace: Path) -> Path:
     return repo_dir
 
 
-def collect_current_loc(repo: str, repo_dir: Path, run_date: str) -> list[dict[str, str | int]]:
+def collect_current_loc(
+    repo: str, repo_dir: Path, run_date: str
+) -> list[dict[str, str | int]]:
     result = run_command(
         [
             "cloc",
@@ -214,7 +216,9 @@ def collect_commit_activity(
 
     rows: list[dict[str, str | int]] = []
 
-    for (repo_name, commit_date, author_email, author_name), values in sorted(totals.items()):
+    for (repo_name, commit_date, author_email, author_name), values in sorted(
+        totals.items()
+    ):
         added = values["added"]
         deleted = values["deleted"]
 
@@ -240,8 +244,7 @@ def summarize_current_loc_by_repo(
     current_loc_rows: list[dict[str, str | int]],
 ) -> dict[str, dict[str, int]]:
     summary: dict[str, dict[str, int]] = {
-        repo: {"current_files": 0, "current_code_lines": 0}
-        for repo in repos
+        repo: {"current_files": 0, "current_code_lines": 0} for repo in repos
     }
 
     for row in current_loc_rows:
@@ -258,7 +261,12 @@ def summarize_commit_activity_by_repo(
     commit_activity_rows: list[dict[str, str | int]],
 ) -> dict[str, dict[str, int]]:
     summary: dict[str, dict[str, int]] = {
-        repo: {"commits_since_start": 0, "added_since_start": 0, "deleted_since_start": 0, "net_since_start": 0}
+        repo: {
+            "commits_since_start": 0,
+            "added_since_start": 0,
+            "deleted_since_start": 0,
+            "net_since_start": 0,
+        }
         for repo in repos
     }
 
@@ -266,7 +274,12 @@ def summarize_commit_activity_by_repo(
         repo = str(row["repo"])
         summary.setdefault(
             repo,
-            {"commits_since_start": 0, "added_since_start": 0, "deleted_since_start": 0, "net_since_start": 0},
+            {
+                "commits_since_start": 0,
+                "added_since_start": 0,
+                "deleted_since_start": 0,
+                "net_since_start": 0,
+            },
         )
         summary[repo]["commits_since_start"] += int(row["commits"])
         summary[repo]["added_since_start"] += int(row["added"])
@@ -295,7 +308,12 @@ def build_history_rows(
         loc = loc_by_repo.get(repo, {"current_files": 0, "current_code_lines": 0})
         commits = commits_by_repo.get(
             repo,
-            {"commits_since_start": 0, "added_since_start": 0, "deleted_since_start": 0, "net_since_start": 0},
+            {
+                "commits_since_start": 0,
+                "added_since_start": 0,
+                "deleted_since_start": 0,
+                "net_since_start": 0,
+            },
         )
 
         repo_rows.append(
@@ -322,16 +340,22 @@ def build_history_rows(
         "total_repos": len(repos),
         "current_files": sum(int(row["current_files"]) for row in repo_rows),
         "current_code_lines": sum(int(row["current_code_lines"]) for row in repo_rows),
-        "commits_since_start": sum(int(row["commits_since_start"]) for row in repo_rows),
+        "commits_since_start": sum(
+            int(row["commits_since_start"]) for row in repo_rows
+        ),
         "added_since_start": sum(int(row["added_since_start"]) for row in repo_rows),
-        "deleted_since_start": sum(int(row["deleted_since_start"]) for row in repo_rows),
+        "deleted_since_start": sum(
+            int(row["deleted_since_start"]) for row in repo_rows
+        ),
         "net_since_start": sum(int(row["net_since_start"]) for row in repo_rows),
     }
 
     return [run_row], repo_rows
 
 
-def write_csv(path: Path, rows: list[dict[str, str | int]], fieldnames: list[str]) -> None:
+def write_csv(
+    path: Path, rows: list[dict[str, str | int]], fieldnames: list[str]
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", newline="", encoding="utf-8") as csvfile:
@@ -356,8 +380,7 @@ def append_or_replace_csv(
             existing_rows = [row for row in reader]
 
     new_keys = {
-        tuple(str(row.get(field, "")) for field in key_fields)
-        for row in new_rows
+        tuple(str(row.get(field, "")) for field in key_fields) for row in new_rows
     }
 
     kept_rows = [
@@ -374,9 +397,15 @@ def append_or_replace_csv(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Collect code metrics across repositories.")
-    parser.add_argument("--repo-list", default="config/repos.txt", help="Path to repos.txt.")
-    parser.add_argument("--workspace", default=".cache/repos", help="Local repo cache folder.")
+    parser = argparse.ArgumentParser(
+        description="Collect code metrics across repositories."
+    )
+    parser.add_argument(
+        "--repo-list", default="config/repos.txt", help="Path to repos.txt."
+    )
+    parser.add_argument(
+        "--workspace", default=".cache/repos", help="Local repo cache folder."
+    )
     parser.add_argument("--output", default="data", help="Output folder.")
     parser.add_argument(
         "--author-email",
@@ -404,7 +433,9 @@ def main() -> None:
     workspace = Path(args.workspace)
     output = Path(args.output)
     since = args.since or ""
-    author_emails = {email.lower().strip() for email in args.author_email if email.strip()}
+    author_emails = {
+        email.lower().strip() for email in args.author_email if email.strip()
+    }
 
     repos = read_repo_list(repo_list_path)
 
@@ -496,8 +527,14 @@ def main() -> None:
         author_emails=author_emails,
     )
 
-    write_csv(output / "current_loc_by_language.csv", current_loc_rows, current_loc_fields)
-    write_csv(output / "commit_activity_by_day.csv", commit_activity_rows, commit_activity_fields)
+    write_csv(
+        output / "current_loc_by_language.csv", current_loc_rows, current_loc_fields
+    )
+    write_csv(
+        output / "commit_activity_by_day.csv",
+        commit_activity_rows,
+        commit_activity_fields,
+    )
 
     append_or_replace_csv(
         output / "run_summary_history.csv",
