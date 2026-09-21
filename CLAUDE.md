@@ -4,161 +4,109 @@ This document defines Claude Code-specific settings, project context, and develo
 
 ## Overview
 
-This is a Tennessee Department of Agriculture (TDA) GIS template repository. All code should follow TDA data classification and security guidelines outlined in `AGENTS.md`.
+`tda-code-metrics` collects code activity metrics (current lines of code by language via `cloc`, and committed line activity via Git history) across selected `tn-dept-ag` GitHub repositories, and publishes a static dashboard from `docs/` via GitHub Pages. See `README.md` for the full data model, workflow, and troubleshooting guide.
+
+This repository is not a GIS/geospatial project — there is no `geopandas`, `arcpy`, ArcGIS Online/Enterprise integration, or spatial data here. For agent-wide constraints (data classification, git/PR behavior, validation commands), see `AGENTS.md`; this file only adds Claude Code-specific setup notes.
 
 ## Claude Code Project Setup
 
 ### Python Environment
 
-- **Python Version:** 3.11 (as specified in `.devcontainer/devcontainer.json`)
-- **Package Manager:** pip
-- **Dev Tools:** ruff (linting), pytest (testing when applicable)
-
-Install dependencies:
-```bash
-pip install -r requirements.txt          # Production dependencies
-pip install -r requirements-dev.txt      # Development dependencies (includes JupyterLab)
-```
-
-### Spatial Data Handling
-
-This template works with geospatial data via `geopandas`, `arcgis` (Python API), and ArcGIS Online/Enterprise portals.
-
-**Never commit large binary spatial files** (`.shp`, `.gdb`, `.tif`, `.gpkg`, etc.). See `.gitignore` for the full blocklist.
-
-For working with large or binary spatial datasets:
-- Store raw data in `data/raw/` (git-ignored)
-- Store processed outputs in `data/processed/` (git-ignored)
-- Document schema, CRS, and data transformations in notebooks or `docs/`
-- If data context is needed, ask the user to provide a schema summary or sample metadata
+- **Python version:** 3.13, matching `.python-version` and the CI workflow's `actions/setup-python@v6` step.
+- **Dependencies:** `scripts/collect_metrics.py` uses only the Python standard library — there is no `requirements.txt` or `pyproject.toml`. Do not assume one exists.
+- **Dev tools:** `ruff` (lint/format) and `pre-commit`, configured in `.pre-commit-config.yaml`. There is no automated test suite.
+- **External CLI tools:** `cloc` and `gh` must be installed and authenticated (`gh auth login`) for local runs — see "Run Locally" in `README.md`.
 
 ### Code Organization
 
+```text
+tda-code-metrics/
+├── .github/workflows/collect-metrics.yml   # Scheduled/manual metrics collection + publish
+├── config/
+│   ├── repos.example.txt                   # Tracked template for the local repo list
+│   └── repos.txt                           # Git-ignored local repo list (may name private repos)
+├── data/                                   # Canonical CSV output (git-tracked, NOT git-ignored)
+│   ├── current_loc_by_language.csv         # Point-in-time snapshot, recreated each run
+│   ├── commit_activity_by_day.csv          # Recreated each run using --since
+│   ├── run_summary_history.csv             # Append-only history
+│   └── repo_summary_history.csv            # Append-only history
+├── docs/                                   # GitHub Pages dashboard
+│   ├── index.html
+│   └── data/*.csv                          # Public-safe copies of data/*.csv (private repos masked)
+├── scripts/collect_metrics.py              # The collector; stdlib-only
+├── AGENTS.md                               # Agent-wide constraints (data handling, git, validation)
+├── CLAUDE.md                               # This file
+└── README.md                               # Full project documentation
 ```
-├── data/                          # Data storage (git-ignored)
-│   ├── processed/                 # Cleaned, derived spatial outputs
-│   └── raw/                       # Original downloads (DO NOT COMMIT)
-├── docs/                          # Documentation, schemas, references
-├── notebooks/                     # Jupyter notebooks for exploration
-├── src/                           # Production Python code (if applicable)
-├── scripts/                       # Production-ready scripts
-├── .devcontainer/                 # VS Code dev container config
-├── .env.example                   # Template for environment variables
-├── .gitignore                     # Git ignore rules (spatial binaries, secrets)
-├── AGENTS.md                      # AI agent constraints and guidelines
-├── CLAUDE.md                      # Claude Code configuration (this file)
-├── README.md                      # Project overview
-├── requirements.txt               # Production dependencies
-└── requirements-dev.txt           # Development dependencies
-```
 
-## Environment Variables
-
-Use `.env.example` as a template. Create a `.env` file locally (git-ignored) with:
-- ArcGIS Online username and password
-- API keys (if applicable)
-- Portal URLs or service names
-- Any credentials or sensitive configuration
-
-**Never commit actual credentials to Git.**
+`data/*.csv` and `docs/data/*.csv` are committed, published output — not scratch or regenerable-and-discardable files. Never add them to `.gitignore` or delete them as cleanup.
 
 ## AI Agent Notes
 
-This template prioritizes working with Claude Code and other AI coding assistants. Refer to `AGENTS.md` for:
-- Repository data classification and confidentiality rules
+Refer to `AGENTS.md` for:
+
+- Repository data classification and confidentiality rules (this repo publishes `docs/data/` publicly; private repo names are masked by the workflow, author names/emails are not)
 - Constraints on shell execution and direct file I/O
-- Validation commands and testing expectations
-- ArcGIS Online and Enterprise workflow safety guardrails
+- Validation commands
+- Git and pull request behavior, including the workflow's automated push to `main`
 
 ### For Claude Code Users
 
 Claude Code can read, edit, and write files directly. Key guidelines:
-1. Use existing code patterns and style as a reference
-2. Keep changes minimal and focused on the user's request
-3. Validate syntax and logic before reporting completion
-4. Update `README.md` "Last Updated" field if making significant changes
-5. Refer to `AGENTS.md` for data handling, networking, and GIS-specific constraints
+
+1. Use existing code patterns and style as a reference.
+2. Keep changes minimal and focused on the user's request.
+3. Validate syntax and logic before reporting completion.
+4. Refer to `AGENTS.md` for data handling, networking, and repository-specific constraints.
 
 ## Development Workflow
 
 ### Running Code
 
-- **Notebooks:** Use JupyterLab (in `requirements-dev.txt`)
+- **Collector script:**
+
   ```bash
-  jupyter lab
-  ```
-  
-- **Scripts:** Run Python scripts directly or via scheduled tasks
-  ```bash
-  python scripts/my_script.py
+  python -u scripts/collect_metrics.py --repo-list config/repos.txt --workspace .cache/repos --output data --author-email you@example.com --since 2026-01-01
   ```
 
-- **Testing:** When tests exist, run via pytest
-  ```bash
-  pytest
-  ```
+  See "Run Locally" in `README.md` for the full local setup (venv activation, `gh auth login`, copying CSVs to `docs/data/`).
+
+- **Workflow:** `.github/workflows/collect-metrics.yml`, runnable manually from the GitHub Actions tab or on its weekly schedule.
 
 ### Code Quality
 
-- **Linting:** Use ruff for Python linting
-  ```bash
-  ruff check .
-  ```
-
-- **Formatting:** Code should follow PEP 8 conventions (ruff enforces this)
+- **Linting/formatting:** `ruff check .` and `ruff format --check .`, or `pre-commit run --all-files` to run the full hook set (trailing whitespace, YAML/JSON checks, ruff, markdownlint).
+- **Testing:** No automated test suite exists in this repository.
 
 ### Editing and Validation
 
 When Claude Code or other agents edit files:
-1. Review changes for correctness
-2. Run validation commands when available (ruff, pytest)
-3. Manually review Markdown, JSON, and YAML syntax if tools are unavailable
-4. Test changes in notebooks or scripts before committing
 
-## Spatial Data Practices
-
-- **Coordinate Reference System (CRS):** Explicitly state CRS for all spatial operations
-- **Geometry Validation:** Check for null geometries, self-intersections, or invalid coordinates before processing
-- **Large Files:** Use `geopandas` chunking, spatial indexing, or filtering for datasets > 100 MB
-- **Projections:** Never assume a CRS; verify against metadata, shapefiles, or GeoJSON properties
-- **Comments:** Add brief comments for non-obvious spatial joins, overlays, buffers, or CRS transformations
-
-## ArcGIS Online / Enterprise Workflows
-
-Before modifying hosted layers, feature services, or scheduled jobs:
-1. Confirm the target portal URL and account
-2. Identify item IDs and service names
-3. Prefer dry-run behavior for new scripts
-4. Never overwrite services or truncate data without explicit user confirmation
-
-Refer to `AGENTS.md` → "ArcGIS Online and Enterprise Safety" for full guardrails.
+1. Review changes for correctness.
+2. Run `ruff check .` / `pre-commit run --all-files` when available.
+3. Manually review Markdown, JSON, and YAML syntax if tools are unavailable — especially `.github/workflows/collect-metrics.yml`, since it authenticates via a GitHub App and pushes directly to `main`.
+4. Test script changes locally before assuming the scheduled workflow will succeed.
 
 ## Networking & Security
 
-- **Corporate Proxy:** TDA team members operate behind Zscaler proxy
-- **TLS/SSL:** Do not disable certificate verification in production scripts
-- **External Requests:** Configure your Python scripts to trust local Zscaler certificates if needed
-
-See `AGENTS.md` → "Script Networking Constraints" for details.
+- **Corporate Proxy:** TDA team members operate behind Zscaler proxy; local runs of `git`/`gh`/the collector script may need to trust the local Zscaler certificate.
+- **Secrets:** The workflow uses a GitHub App (`APP_ID` variable, `APP_PRIVATE_KEY` secret) rather than a personal access token. Never commit private keys, `.env` files, or a `config/repos.txt` containing private repository names. See "GitHub App Authentication" in `README.md`.
 
 ## Validation & Testing
 
 ### Manual Review (When Tools Unavailable)
-- Markdown: check heading levels, links, and list indentation
-- JSON/YAML/TOML: validate syntax, indentation, and required fields
-- Python: inspect imports, naming, indentation, and side effects
+
+- Markdown: check heading levels, links, and list indentation.
+- JSON/YAML: validate syntax, indentation, and required fields — particularly the workflow file.
+- Python: inspect imports, naming, indentation, and side effects; confirm no new third-party dependency was introduced without also adding a dependency file.
 
 ### Automated Checks (When Available)
-- Markdown linting: (no default tool configured; review manually)
-- Python linting: `ruff check .`
-- Python testing: `pytest` (run if tests exist)
+
+- `ruff check .` / `ruff format --check .` (or `pre-commit run --all-files`)
+- No `pytest` suite exists.
 
 ## Getting Help
 
 - **Claude Code Documentation:** `/help` in Claude Code
 - **Project Questions:** Refer to `AGENTS.md` or `README.md`
 - **Bug Reports:** Report issues at [claude-code-issues](https://github.com/anthropics/claude-code/issues)
-
-## Last Updated
-
-2026-09-16
