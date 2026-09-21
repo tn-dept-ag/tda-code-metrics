@@ -15,7 +15,6 @@
 *.md text eol=lf
 *.markdown text eol=lf
 README text eol=lf
-LICENSE text eol=lf
 NOTICE text eol=lf
 
 # Config files
