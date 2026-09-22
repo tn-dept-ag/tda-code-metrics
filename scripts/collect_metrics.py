@@ -90,13 +90,35 @@ def safe_repo_dir_name(repo: str) -> str:
     return repo.replace("/", "__")
 
 
+# Free-text fields sourced from `git log` (author name/email) are fully
+# attacker-controlled and get published in docs/data/*.csv. Prefix values
+# that a spreadsheet app would interpret as a formula so opening the CSV in
+# Excel/Sheets can't execute anything.
+FORMULA_TRIGGER_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def sanitize_spreadsheet_value(value: str) -> str:
+    if value and value[0] in FORMULA_TRIGGER_PREFIXES:
+        return f"'{value}"
+    return value
+
+
 def clone_or_update_repo(repo: str, workspace: Path) -> Path:
     workspace.mkdir(parents=True, exist_ok=True)
     repo_dir = workspace / safe_repo_dir_name(repo)
 
     if repo_dir.exists():
         run_command(["git", "fetch", "--all", "--prune"], cwd=repo_dir)
-        run_command(["git", "pull", "--ff-only"], cwd=repo_dir, check=False)
+        pull_result = run_command(
+            ["git", "pull", "--ff-only"], cwd=repo_dir, check=False
+        )
+
+        if pull_result.returncode != 0:
+            print(
+                f"Warning: could not fast-forward {repo} "
+                f"({pull_result.stderr.strip()}); using existing local state."
+            )
+
         return repo_dir
 
     run_command(["gh", "repo", "clone", repo, str(repo_dir)])
@@ -227,8 +249,8 @@ def collect_commit_activity(
                 "run_date": run_date,
                 "repo": repo_name,
                 "commit_date": commit_date,
-                "author_email": author_email,
-                "author_name": author_name,
+                "author_email": sanitize_spreadsheet_value(author_email),
+                "author_name": sanitize_spreadsheet_value(author_name),
                 "commits": values["commits"],
                 "added": added,
                 "deleted": deleted,

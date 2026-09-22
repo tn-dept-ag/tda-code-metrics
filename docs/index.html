@@ -332,6 +332,11 @@
       return parseCsv(await response.text());
     }
 
+    const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => HTML_ESCAPES[char]);
+    }
+
     function n(value) {
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : 0;
@@ -418,7 +423,7 @@
       const tbody = document.getElementById("repoTable");
       tbody.innerHTML = rows.map(row => `
         <tr>
-          <td><strong>${row.repo}</strong></td>
+          <td><strong>${escapeHtml(row.repo)}</strong></td>
           <td>${fmt(row.current_code_lines)}</td>
           <td>${fmt(row.commits_since_start)}</td>
           <td>${fmt(row.added_since_start)}</td>
